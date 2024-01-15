@@ -13,6 +13,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <deque>
 
 #include <QVector2D>
 #include <QVector3D>
@@ -21,11 +22,15 @@ struct BVHTree {
     std::string name;
     QVector3D offset;
     std::vector<std::string> channels;
-    std::vector<BVHTree> joints;
+    std::vector<BVHTree*> joints;
+    BVHTree* parent = NULL;
+    int nbNode = 1;
+    int nbLink = 0;
+    int vertexIndex;
 };
 
-int readNode(const std::vector<std::string>& tokens, int i, BVHTree& node);
-std::vector<BVHTree> readBVH(const std::string& file);
+int readNode(const std::vector<std::string>& tokens, int i, BVHTree* node);
+std::vector<BVHTree*> readBVH(const std::string& file);
 
 class GeometryEngine : protected QOpenGLFunctions
 {

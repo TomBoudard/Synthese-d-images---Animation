@@ -22,7 +22,7 @@ GeometryEngine::GeometryEngine()
 
     // Initializes cube geometry and transfers it to VBOs
     // initCubeGeometry();
-    initRepereGeometry();
+    // initRepereGeometry();
     initBVHGeometry("../models/run1.bvh");
 }
 
@@ -186,13 +186,13 @@ void GeometryEngine::drawRepereGeometry(QOpenGLShaderProgram *program) {
     glDrawElements(GL_LINES, 6, GL_UNSIGNED_SHORT, nullptr);
 }
 
-int readNode(const std::vector<std::string>& tokens, int i, BVHTree& node) {
+int readNode(const std::vector<std::string>& tokens, int i, BVHTree* node) {
     // if (tokens[i] != keyWord) {
     //     throw std::invalid_argument("\"" + keyWord + "\" token not found");
     // }
 
-    node.name = tokens[i + 1];
-    // std::cout << node.name << "\n";
+    node->name = tokens[i + 1];
+    // std::cout << node->name << "\n";
 
     std::string accolade = tokens[i + 2];
     if (accolade != "{") {
@@ -204,7 +204,7 @@ int readNode(const std::vector<std::string>& tokens, int i, BVHTree& node) {
         throw std::invalid_argument("\"OFFSET\" token not found");
     }
 
-    node.offset = QVector3D(std::stof(tokens[i + 4]), std::stof(tokens[i + 5]), std::stof(tokens[i + 6]));
+    node->offset = QVector3D(std::stof(tokens[i + 4]), std::stof(tokens[i + 5]), std::stof(tokens[i + 6]));
 
     std::string channels = tokens[i + 7];
     if (channels != "CHANNELS") {
@@ -214,13 +214,13 @@ int readNode(const std::vector<std::string>& tokens, int i, BVHTree& node) {
     int channelsLen = std::stoi(tokens[i + 8]);
 
     for (int j = 0; j < channelsLen; j++) {
-        node.channels.push_back(tokens[i + 9 + j]);
+        node->channels.push_back(tokens[i + 9 + j]);
     }
 
     return i + 9 + channelsLen;
 }
 
-std::vector<BVHTree> readBVH(const std::string& file) {
+std::vector<BVHTree*> readBVH(const std::string& file) {
     std::ifstream fch(file);
     if (!fch.is_open()) {
         throw std::runtime_error("Error opening file: " + file);
@@ -242,26 +242,27 @@ std::vector<BVHTree> readBVH(const std::string& file) {
 
     std::string nextKeyword = tokens[i];
 
-    std::vector<BVHTree> rootList;
+    std::vector<BVHTree*> rootList;
     std::vector<BVHTree*> nodeQueue;
 
-    BVHTree node;
     while (nextKeyword == "ROOT") {
-        i = readNode(tokens, i, node);
-        rootList.push_back(node);
-        nodeQueue.push_back(&node);
+        BVHTree* root = new BVHTree();
+        i = readNode(tokens, i, root);
+        rootList.push_back(root);
+        nodeQueue.push_back(root);
 
         while (!nodeQueue.empty()) {
+            BVHTree* node = new BVHTree();
             std::string t = tokens[i];
 
             if (t == "JOINT") {
                 i = readNode(tokens, i, node);
                 nodeQueue.back()->joints.push_back(node);
-                nodeQueue.push_back(&node);
+                node->parent = nodeQueue.back();
+                nodeQueue.push_back(node);
             } else if (t == "End") {
-                BVHTree endNode;
 
-                endNode.name = tokens[i + 1];
+                node->name = tokens[i + 1];
                 t = tokens[i + 2];
                 if (t != "{") {
                     throw std::invalid_argument("\"{\" token not found");
@@ -272,9 +273,10 @@ std::vector<BVHTree> readBVH(const std::string& file) {
                     throw std::invalid_argument("\"OFFSET\" token not found");
                 }
 
-                node.offset = QVector3D(std::stof(tokens[i + 4]), std::stof(tokens[i + 5]), std::stof(tokens[i + 6]));
+                node->offset = QVector3D(std::stof(tokens[i + 4]), std::stof(tokens[i + 5]), std::stof(tokens[i + 6]));
                 
-                nodeQueue.back()->joints.push_back(endNode);
+                nodeQueue.back()->joints.push_back(node);
+                node->parent = nodeQueue.back();
 
                 t = tokens[i + 7];
                 if (t != "}") {
@@ -283,6 +285,11 @@ std::vector<BVHTree> readBVH(const std::string& file) {
 
                 i += 8;
             } else if (t == "}") {
+                BVHTree* closingNode = nodeQueue.back();
+                for (auto child: closingNode->joints) {
+                    closingNode->nbNode += child->nbNode;
+                    closingNode->nbLink += child->nbLink + 1;
+                }
                 nodeQueue.pop_back();
                 i++;
             } else {
@@ -302,22 +309,112 @@ std::vector<BVHTree> readBVH(const std::string& file) {
 
 
 void GeometryEngine::printBVHTree(const BVHTree& node, const std::string& dependency, const std::string& first, const std::string& next) {
-    std::string out = dependency + first + "Node \"" + node.name + "\" Offset: (" + std::to_string(node.offset.x()) + ", " + std::to_string(node.offset.y()) + ", " + std::to_string(node.offset.z()) + ")\n";
+    std::string out = dependency + first + "Node \"" + node.name + "\", NbSubTreeNodes :" + std::to_string(node.nbNode) + ", Offset: (" + std::to_string(node.offset.x()) + ", " + std::to_string(node.offset.y()) + ", " + std::to_string(node.offset.z()) + ")\n";
     std::cout << out;
 
     for (size_t i = 0; i < node.joints.size(); ++i) {
-        const BVHTree& child = node.joints[i];
+        const BVHTree* child = node.joints[i];
         std::string fst = (i == node.joints.size() - 1) ? " *> " : " +> ";
         std::string snd = (i == node.joints.size() - 1) ? "   " : " | ";
-        printBVHTree(child, dependency + next, fst, snd);
+        printBVHTree(*child, dependency + next, fst, snd);
     }
 }
 
 void GeometryEngine::initBVHGeometry(std::string filename) {
-    std::vector<BVHTree> rootList = readBVH(filename);
-    printBVHTree(rootList[0]);
+    std::vector<BVHTree*> rootList = readBVH(filename);
+    printBVHTree(*rootList[0]);
+
+    int nbTotNode = 0;
+    int nbTotLink = 0;
+    for (auto root: rootList) {
+        nbTotNode += root->nbNode;
+        nbTotLink += root->nbLink;
+    }
+
+    VertexData vertices[nbTotNode * 7];
+    GLushort indices[nbTotNode * 6 + nbTotLink * 2];
+
+    int indexVertices = 0;
+    int indexIndices = 0;
+    float radius = 0.05;
+    std::deque<BVHTree*> nodeQueue;
+    for (auto root: rootList) {
+        nodeQueue.push_back(root);
+        while (!nodeQueue.empty()) {
+            BVHTree* node = nodeQueue.front();
+            nodeQueue.pop_front();
+            node->vertexIndex = indexVertices;
+            QVector3D worldPos = node->offset;
+            if (node->parent){
+                worldPos += vertices[node->parent->vertexIndex].position;
+            } else {
+                // worldPos = QVector3D(0.0f, 0.0f, 0.0f);
+            }
+            worldPos /= 10000.0f;
+            VertexData vertex1 = {worldPos + QVector3D(   0.0f,    0.0f,    0.0f), QVector3D(1.0f, 1.0f, 1.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex2 = {worldPos + QVector3D( radius,    0.0f,    0.0f), QVector3D(1.0f, 0.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex3 = {worldPos + QVector3D(-radius,    0.0f,    0.0f), QVector3D(1.0f, 0.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex4 = {worldPos + QVector3D(   0.0f,  radius,    0.0f), QVector3D(0.0f, 1.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex5 = {worldPos + QVector3D(   0.0f, -radius,    0.0f), QVector3D(0.0f, 1.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex6 = {worldPos + QVector3D(   0.0f,    0.0f,  radius), QVector3D(0.0f, 0.0f, 1.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex7 = {worldPos + QVector3D(   0.0f,    0.0f, -radius), QVector3D(0.0f, 0.0f, 1.0f), QVector2D(0.0f, 0.0f)};
+            vertices[indexVertices] = vertex1;
+            vertices[indexVertices + 1] = vertex2;
+            vertices[indexVertices + 2] = vertex3;
+            vertices[indexVertices + 3] = vertex4;
+            vertices[indexVertices + 4] = vertex5;
+            vertices[indexVertices + 5] = vertex6;
+            vertices[indexVertices + 6] = vertex7;
+
+            // Star pattern            
+            indices[indexIndices] = indexVertices + 1;
+            indices[indexIndices + 1] = indexVertices + 2;
+            indices[indexIndices + 2] = indexVertices + 3;
+            indices[indexIndices + 3] = indexVertices + 4;
+            indices[indexIndices + 4] = indexVertices + 5;
+            indices[indexIndices + 5] = indexVertices + 6;
+            indexIndices += 6;
+
+            // Link line(s)
+            for (auto child: node->joints) {
+                indices[indexIndices] = indexVertices;
+                indices[indexIndices + 1] = indexVertices + 7 * (nodeQueue.size() + 1);
+                indexIndices += 2;
+                nodeQueue.push_back(child);
+            }
+
+            indexVertices += 7;
+        }
+    }
+
+    arrayBuf.bind();
+    arrayBuf.allocate(vertices, nbTotNode * 7 * sizeof(VertexData));
+
+    indexBuf.bind();
+    indexBuf.allocate(indices, (nbTotNode * 6 + nbTotLink * 2) * sizeof(GLushort));
 }
 
 void GeometryEngine::drawBVHGeometry(QOpenGLShaderProgram *program) {
-    (void) program;
+    // Tell OpenGL which VBOs to use
+    arrayBuf.bind();
+    indexBuf.bind();
+
+    // Offset for position
+    quintptr offset = 0;
+
+    // Tell OpenGL programmable pipeline how to locate vertex position data
+    int vertexLocation = program->attributeLocation("a_position");
+    program->enableAttributeArray(vertexLocation);
+    program->setAttributeBuffer(vertexLocation, GL_FLOAT, offset, 3, sizeof(VertexData));
+
+    // Offset for texture coordinate
+    offset += sizeof(QVector3D);
+
+    // Tell OpenGL programmable pipeline how to locate vertex color data
+    int colorLocation = program->attributeLocation("a_color");
+    program->enableAttributeArray(colorLocation);
+    program->setAttributeBuffer(colorLocation, GL_FLOAT, offset, 3, sizeof(VertexData));
+
+    // Draw lines geometry using indices from VBO 1
+    glDrawElements(GL_LINES, 6, GL_UNSIGNED_SHORT, nullptr);
 }

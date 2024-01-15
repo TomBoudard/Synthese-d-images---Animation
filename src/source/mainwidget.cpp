@@ -72,7 +72,7 @@ void MainWidget::initializeGL()
     initShaders();
     // initTextures();
 
-    geometries = new GeometryEngine;
+    geometries = new GeometryEngine();
 
     // Use QBasicTimer because its faster than QTimer
     timer.start(12, this);
@@ -165,5 +165,6 @@ void MainWidget::paintGL()
 
     // Draw cube geometry
     // geometries->drawCubeGeometry(&program);
-    geometries->drawRepereGeometry(&program);
+    // geometries->drawRepereGeometry(&program);
+    geometries->drawBVHGeometry(&program);
 }
