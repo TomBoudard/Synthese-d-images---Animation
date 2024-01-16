@@ -331,12 +331,15 @@ void GeometryEngine::initBVHGeometry(std::string filename) {
         nbTotLink += root->nbLink;
     }
 
+    nbIndex = nbTotNode * 6 + nbTotLink * 2;
+
     VertexData vertices[nbTotNode * 7];
     GLushort indices[nbTotNode * 6 + nbTotLink * 2];
 
     int indexVertices = 0;
     int indexIndices = 0;
     float radius = 0.05;
+    float scale = 1.0f/100.0f;
     std::deque<BVHTree*> nodeQueue;
     for (auto root: rootList) {
         nodeQueue.push_back(root);
@@ -344,27 +347,26 @@ void GeometryEngine::initBVHGeometry(std::string filename) {
             BVHTree* node = nodeQueue.front();
             nodeQueue.pop_front();
             node->vertexIndex = indexVertices;
-            QVector3D worldPos = node->offset;
+            QVector3D worldPos = node->offset * scale;
             if (node->parent){
                 worldPos += vertices[node->parent->vertexIndex].position;
             } else {
-                // worldPos = QVector3D(0.0f, 0.0f, 0.0f);
+                worldPos = QVector3D(0.0f, 0.0f, 0.0f);
             }
-            worldPos /= 10000.0f;
-            VertexData vertex1 = {worldPos + QVector3D(   0.0f,    0.0f,    0.0f), QVector3D(1.0f, 1.0f, 1.0f), QVector2D(0.0f, 0.0f)};
-            VertexData vertex2 = {worldPos + QVector3D( radius,    0.0f,    0.0f), QVector3D(1.0f, 0.0f, 0.0f), QVector2D(0.0f, 0.0f)};
-            VertexData vertex3 = {worldPos + QVector3D(-radius,    0.0f,    0.0f), QVector3D(1.0f, 0.0f, 0.0f), QVector2D(0.0f, 0.0f)};
-            VertexData vertex4 = {worldPos + QVector3D(   0.0f,  radius,    0.0f), QVector3D(0.0f, 1.0f, 0.0f), QVector2D(0.0f, 0.0f)};
-            VertexData vertex5 = {worldPos + QVector3D(   0.0f, -radius,    0.0f), QVector3D(0.0f, 1.0f, 0.0f), QVector2D(0.0f, 0.0f)};
-            VertexData vertex6 = {worldPos + QVector3D(   0.0f,    0.0f,  radius), QVector3D(0.0f, 0.0f, 1.0f), QVector2D(0.0f, 0.0f)};
-            VertexData vertex7 = {worldPos + QVector3D(   0.0f,    0.0f, -radius), QVector3D(0.0f, 0.0f, 1.0f), QVector2D(0.0f, 0.0f)};
-            vertices[indexVertices] = vertex1;
-            vertices[indexVertices + 1] = vertex2;
-            vertices[indexVertices + 2] = vertex3;
-            vertices[indexVertices + 3] = vertex4;
-            vertices[indexVertices + 4] = vertex5;
-            vertices[indexVertices + 5] = vertex6;
-            vertices[indexVertices + 6] = vertex7;
+            VertexData vertex0 = {worldPos + QVector3D(   0.0f,    0.0f,    0.0f), QVector3D(1.0f, 1.0f, 1.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex1 = {worldPos + QVector3D( radius,    0.0f,    0.0f), QVector3D(1.0f, 0.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex2 = {worldPos + QVector3D(-radius,    0.0f,    0.0f), QVector3D(1.0f, 0.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex3 = {worldPos + QVector3D(   0.0f,  radius,    0.0f), QVector3D(0.0f, 1.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex4 = {worldPos + QVector3D(   0.0f, -radius,    0.0f), QVector3D(0.0f, 1.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex5 = {worldPos + QVector3D(   0.0f,    0.0f,  radius), QVector3D(0.0f, 0.0f, 1.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex6 = {worldPos + QVector3D(   0.0f,    0.0f, -radius), QVector3D(0.0f, 0.0f, 1.0f), QVector2D(0.0f, 0.0f)};
+            vertices[indexVertices] = vertex0;
+            vertices[indexVertices + 1] = vertex1;
+            vertices[indexVertices + 2] = vertex2;
+            vertices[indexVertices + 3] = vertex3;
+            vertices[indexVertices + 4] = vertex4;
+            vertices[indexVertices + 5] = vertex5;
+            vertices[indexVertices + 6] = vertex6;
 
             // Star pattern            
             indices[indexIndices] = indexVertices + 1;
@@ -416,5 +418,5 @@ void GeometryEngine::drawBVHGeometry(QOpenGLShaderProgram *program) {
     program->setAttributeBuffer(colorLocation, GL_FLOAT, offset, 3, sizeof(VertexData));
 
     // Draw lines geometry using indices from VBO 1
-    glDrawElements(GL_LINES, 6, GL_UNSIGNED_SHORT, nullptr);
+    glDrawElements(GL_LINES, nbIndex, GL_UNSIGNED_SHORT, nullptr);
 }

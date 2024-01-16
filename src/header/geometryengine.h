@@ -49,6 +49,8 @@ private:
     void initRepereGeometry();
     void initBVHGeometry(std::string filename);
 
+    int nbIndex;
+
     QOpenGLBuffer arrayBuf;
     QOpenGLBuffer indexBuf;
 };
