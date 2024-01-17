@@ -58,18 +58,20 @@ void GeometryEngine::updateAnimation(float elapseTime) {
             QVector3D worldPos = QVector3D(0.0f, 0.0f, 0.0f);
 
             if (node->channels.empty()) {    
+                worldPos = vertices[node->parent->vertexIndex].position;
                 worldPos += node->parent->rotationMatrix * node->offset * scale;
-                worldPos += vertices[node->parent->vertexIndex].position;
             } else {
                 int i = -1;
                 while (i+2 < static_cast<int>(node->channelsValues.size()) && node->channelsValues[i+1][0] < elapseTime) i++;
 
                 float p = (elapseTime - node->channelsValues[i][0]) / (node->channelsValues[i+1][0] - node->channelsValues[i][0]);
 
+                p = std::min(1.0f, p);
+
                 float values[6] = {0, 0, 0, 0, 0, 0};
 
                 for (int k = 0; k < static_cast<int>(node->channels.size()); k++) {
-                    values[equivalence[node->channels[k]]] = (p-1) * node->channelsValues[i][k + 1] + p * node->channelsValues[i+1][k + 1];
+                    values[equivalence[node->channels[k]]] = (1-p) * node->channelsValues[i][k + 1] + p * node->channelsValues[i+1][k + 1];
                 }
 
                 float theta = values[3];
@@ -108,10 +110,12 @@ void GeometryEngine::updateAnimation(float elapseTime) {
 
                     node->rotationMatrix = node->parent->rotationMatrix * localRotation;
 
-                    worldPos += node->parent->rotationMatrix * node->offset * scale;
+                    worldPos = node->parent->rotationMatrix * node->offset * scale;
                     worldPos += vertices[node->parent->vertexIndex].position;
                 } else {
                     node->rotationMatrix = localRotation;
+
+                    worldPos = QVector3D(0.0f, 0.0f, 0.0f);
                 }
             }
 
