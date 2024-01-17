@@ -14,6 +14,7 @@
 #include <QBasicTimer>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLTexture>
+#include <QDateTime>
 
 class GeometryEngine;
 
@@ -43,6 +44,8 @@ private:
     GeometryEngine *geometries = nullptr;
 
     QOpenGLTexture *texture = nullptr;
+
+    qint64 startTime = QDateTime::currentMSecsSinceEpoch();
 
     QMatrix4x4 projection;
 
