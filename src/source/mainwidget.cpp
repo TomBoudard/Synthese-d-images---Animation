@@ -141,7 +141,7 @@ void MainWidget::paintGL()
     float elapsedTime = static_cast<float>(currentTime - startTime) / 1000.0; // Convert to seconds
     
     // Update the geometrie
-    geometries->updateAnimation(elapsedTime / 10.0);
+    geometries->updateAnimation(elapsedTime / 1.0 - 1.5);
 
     // Clear color and depth buffer
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

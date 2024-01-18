@@ -46,7 +46,10 @@ void GeometryEngine::updateAnimation(float elapseTime) {
     VertexData vertices[nbVertex];
 
     float radius = 0.05;
-    float scale = 1.0f/100.0f;
+    float scale = 1.0f/200.0f;
+
+    QVector3D globalOffset = QVector3D(-350.0f, 0.0f, 0.0f) * scale;
+
     std::deque<BVHTree*> nodeQueue;
     for (auto root: rootList) {
         nodeQueue.push_back(root);
@@ -61,17 +64,35 @@ void GeometryEngine::updateAnimation(float elapseTime) {
                 worldPos = vertices[node->parent->vertexIndex].position;
                 worldPos += node->parent->rotationMatrix * node->offset * scale;
             } else {
-                int i = -1;
+                int i = 0;
                 while (i+2 < static_cast<int>(node->channelsValues.size()) && node->channelsValues[i+1][0] < elapseTime) i++;
 
                 float p = (elapseTime - node->channelsValues[i][0]) / (node->channelsValues[i+1][0] - node->channelsValues[i][0]);
 
-                p = std::min(1.0f, p);
+                p = std::max(0.0f, std::min(1.0f, p));
 
                 float values[6] = {0, 0, 0, 0, 0, 0};
 
+                bool hasNewOffset = false;
+
                 for (int k = 0; k < static_cast<int>(node->channels.size()); k++) {
-                    values[equivalence[node->channels[k]]] = (1-p) * node->channelsValues[i][k + 1] + p * node->channelsValues[i+1][k + 1];
+                    int equivalenceIndex = equivalence[node->channels[k]];
+                    if (equivalenceIndex < 3) {
+                        hasNewOffset = true;
+                    }
+                    float prev = node->channelsValues[ i ][k + 1];
+                    float next = node->channelsValues[i+1][k + 1];
+                    if (equivalenceIndex > 2  && abs(prev + 360 - next) < abs(prev - next)) {
+                        prev += 360;
+                    } else if (equivalenceIndex > 2  && abs(prev - (next + 360)) < abs(prev - next)) {
+                        next += 360;
+                    }
+                    values[equivalenceIndex] = (1-p) * prev + p * next;
+                }
+
+                QVector3D nodeAnimOffset = node->offset;
+                if (hasNewOffset) {
+                    nodeAnimOffset = QVector3D(values[0], values[1], values[2]);
                 }
 
                 float theta = values[3];
@@ -110,12 +131,13 @@ void GeometryEngine::updateAnimation(float elapseTime) {
 
                     node->rotationMatrix = node->parent->rotationMatrix * localRotation;
 
-                    worldPos = node->parent->rotationMatrix * node->offset * scale;
+                    worldPos = node->parent->rotationMatrix * nodeAnimOffset * scale;
                     worldPos += vertices[node->parent->vertexIndex].position;
                 } else {
                     node->rotationMatrix = localRotation;
 
-                    worldPos = QVector3D(0.0f, 0.0f, 0.0f);
+                    worldPos = nodeAnimOffset * scale + globalOffset;
+                    // worldPos = QVector3D(0.0f, 0.0f, 0.0f);
                 }
             }
 
