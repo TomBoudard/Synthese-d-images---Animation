@@ -82,27 +82,27 @@ void GeometryEngine::updateAnimation(float elapseTime) {
                 // phi -> y
                 // psi -> x
 
-                float cthe = cos(theta * M_PI / 180.0);
-                float sthe = sin(theta * M_PI / 180.0);
-                float cphi = cos(phi * M_PI / 180.0);
-                float sphi = sin(phi * M_PI / 180.0);
-                float cpsi = cos(psi * M_PI / 180.0);
-                float spsi = sin(psi * M_PI / 180.0);
+                float c1 = cos(theta * M_PI / 180.0);
+                float s1 = sin(theta * M_PI / 180.0);
+                float c2 = cos(phi * M_PI / 180.0);
+                float s2 = sin(phi * M_PI / 180.0);
+                float c3 = cos(psi * M_PI / 180.0);
+                float s3 = sin(psi * M_PI / 180.0);
 
                 //     (a b c 0)
                 // R = (d e f 0)
                 //     (g h i 0)
                 //     (0 0 0 1)
 
-                float a = cthe * cpsi - sthe * sphi * spsi;
-                float b = - cphi * sthe;
-                float c = cthe * spsi + cpsi * sthe * sphi;
-                float d = cpsi * sthe + cthe * sphi * spsi;
-                float e = cthe * cphi;
-                float f = sthe * spsi - cthe * cpsi * sphi;
-                float g = - cphi * spsi;
-                float h = sphi;
-                float j = cphi * cpsi;
+                float a = c2 * c3;
+                float b = s1 * s2 * c3 - c1 * s3;
+                float c = c1 * s2 * c3 + s1 * s3;
+                float d = c2 * s3;
+                float e = s1 * s2 * s3 + c1 * c3;
+                float f = c1 * s2 * s3 - s1 * c3;
+                float g = -s2;
+                float h = s1 * c2;
+                float j = c1 * c2;
 
                 QMatrix4x4 localRotation = {a, b, c, 0, d, e, f, 0, g, h, j, 0, 0, 0, 0, 1};
 
