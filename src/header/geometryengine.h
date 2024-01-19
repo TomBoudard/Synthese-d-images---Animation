@@ -17,6 +17,9 @@
 
 #include <QVector2D>
 #include <QVector3D>
+#include <QMatrix4x4>
+
+#include "mesh.h"
 
 struct BVHTree {
     std::string name;
@@ -27,6 +30,7 @@ struct BVHTree {
     int nbNode = 1;
     int nbLink = 0;
     int vertexIndex;
+    int nodeIndex;
 };
 
 int readNode(const std::vector<std::string>& tokens, int i, BVHTree* node);
@@ -41,6 +45,7 @@ public:
     void drawCubeGeometry(QOpenGLShaderProgram *program);
     void drawRepereGeometry(QOpenGLShaderProgram *program);
     void drawBVHGeometry(QOpenGLShaderProgram *program);
+    void drawMeshGeometry(QOpenGLShaderProgram *program);
 
 private:
     BVHTree loadBVH(std::string filename);
@@ -48,11 +53,17 @@ private:
     void initCubeGeometry();
     void initRepereGeometry();
     void initBVHGeometry(std::string filename);
+    void initMeshGeometry(std::string filenameMesh, std::string filenameWeights);
+
+    // std::vector<QMatrix4x4> rigTranfosList;
+    QVector3D rigTranfosList[31]; // Use the number of joint
 
     int nbIndex;
 
-    QOpenGLBuffer arrayBuf;
-    QOpenGLBuffer indexBuf;
+    QOpenGLBuffer arrayBufRig;
+    QOpenGLBuffer arrayBufSkin;
+    QOpenGLBuffer indexBufRig;
+    QOpenGLBuffer indexBufSkin;
 };
 
 #endif // GEOMETRYENGINE_H
