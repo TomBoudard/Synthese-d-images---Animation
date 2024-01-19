@@ -53,6 +53,7 @@ void MainWidget::timerEvent(QTimerEvent *)
     // Stop rotation when speed goes below threshold
     if (angularSpeed < 0.01) {
         angularSpeed = 0.0;
+        update();
     } else {
         // Update rotation
         rotation = QQuaternion::fromAxisAndAngle(rotationAxis, angularSpeed) * rotation;
@@ -136,6 +137,12 @@ void MainWidget::resizeGL(int w, int h)
 
 void MainWidget::paintGL()
 {
+    qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+    float elapsedTime = static_cast<float>(currentTime - startTime) / 1000.0; // Convert to seconds
+    
+    // Update the geometrie
+    geometries->updateAnimation(elapsedTime / 1.0 - 1.5);
+
     // Clear color and depth buffer
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

@@ -52,6 +52,139 @@ GeometryEngine::~GeometryEngine()
 }
 //! [0]
 
+std::map<std::string, int> equivalence = {
+    {"Xposition", 0},
+    {"Yposition", 1},
+    {"Zposition", 2},
+    {"Xrotation", 3},
+    {"Yrotation", 4},
+    {"Zrotation", 5}
+};
+
+void GeometryEngine::updateAnimation(float elapseTime) {
+    VertexData vertices[nbVertex];
+
+    float radius = 0.05;
+    float scale = 1.0f/200.0f;
+
+    QVector3D globalOffset = QVector3D(-350.0f, 0.0f, 0.0f) * scale;
+
+    std::deque<BVHTree*> nodeQueue;
+    for (auto root: rootList) {
+        nodeQueue.push_back(root);
+        while (!nodeQueue.empty()) {
+            BVHTree* node = nodeQueue.front();
+            nodeQueue.pop_front();
+            int indexVertices = node->vertexIndex;
+
+            QVector3D worldPos = QVector3D(0.0f, 0.0f, 0.0f);
+
+            if (node->channels.empty()) {    
+                worldPos = vertices[node->parent->vertexIndex].position;
+                worldPos += node->parent->rotationMatrix * node->offset * scale;
+            } else {
+                int i = 0;
+                while (i+2 < static_cast<int>(node->channelsValues.size()) && node->channelsValues[i+1][0] < elapseTime) i++;
+
+                float p = (elapseTime - node->channelsValues[i][0]) / (node->channelsValues[i+1][0] - node->channelsValues[i][0]);
+
+                p = std::max(0.0f, std::min(1.0f, p));
+
+                float values[6] = {0, 0, 0, 0, 0, 0};
+
+                bool hasNewOffset = false;
+
+                for (int k = 0; k < static_cast<int>(node->channels.size()); k++) {
+                    int equivalenceIndex = equivalence[node->channels[k]];
+                    if (equivalenceIndex < 3) {
+                        hasNewOffset = true;
+                    }
+                    float prev = node->channelsValues[ i ][k + 1];
+                    float next = node->channelsValues[i+1][k + 1];
+                    if (equivalenceIndex > 2  && abs(prev + 360 - next) < abs(prev - next)) {
+                        prev += 360;
+                    } else if (equivalenceIndex > 2  && abs(prev - (next + 360)) < abs(prev - next)) {
+                        next += 360;
+                    }
+                    values[equivalenceIndex] = (1-p) * prev + p * next;
+                }
+
+                QVector3D nodeAnimOffset = node->offset;
+                if (hasNewOffset) {
+                    nodeAnimOffset = QVector3D(values[0], values[1], values[2]);
+                }
+
+                float theta = values[3];
+                float phi = values[4];
+                float psi = values[5];
+
+                // theta -> z
+                // phi -> y
+                // psi -> x
+
+                float c1 = cos(theta * M_PI / 180.0);
+                float s1 = sin(theta * M_PI / 180.0);
+                float c2 = cos(phi * M_PI / 180.0);
+                float s2 = sin(phi * M_PI / 180.0);
+                float c3 = cos(psi * M_PI / 180.0);
+                float s3 = sin(psi * M_PI / 180.0);
+
+                //     (a b c 0)
+                // R = (d e f 0)
+                //     (g h i 0)
+                //     (0 0 0 1)
+
+                float a = c2 * c3;
+                float b = s1 * s2 * c3 - c1 * s3;
+                float c = c1 * s2 * c3 + s1 * s3;
+                float d = c2 * s3;
+                float e = s1 * s2 * s3 + c1 * c3;
+                float f = c1 * s2 * s3 - s1 * c3;
+                float g = -s2;
+                float h = s1 * c2;
+                float j = c1 * c2;
+
+                QMatrix4x4 localRotation = {a, b, c, 0, d, e, f, 0, g, h, j, 0, 0, 0, 0, 1};
+
+                if (node->parent){
+
+                    node->rotationMatrix = node->parent->rotationMatrix * localRotation;
+
+                    worldPos = node->parent->rotationMatrix * nodeAnimOffset * scale;
+                    worldPos += vertices[node->parent->vertexIndex].position;
+                } else {
+                    node->rotationMatrix = localRotation;
+
+                    worldPos = nodeAnimOffset * scale + globalOffset;
+                    // worldPos = QVector3D(0.0f, 0.0f, 0.0f);
+                }
+            }
+
+            VertexData vertex0 = {worldPos + node->rotationMatrix * QVector3D(   0.0f,    0.0f,    0.0f), QVector3D(1.0f, 1.0f, 1.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex1 = {worldPos + node->rotationMatrix * QVector3D( radius,    0.0f,    0.0f), QVector3D(1.0f, 0.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex2 = {worldPos + node->rotationMatrix * QVector3D(-radius,    0.0f,    0.0f), QVector3D(1.0f, 0.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex3 = {worldPos + node->rotationMatrix * QVector3D(   0.0f,  radius,    0.0f), QVector3D(0.0f, 1.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex4 = {worldPos + node->rotationMatrix * QVector3D(   0.0f, -radius,    0.0f), QVector3D(0.0f, 1.0f, 0.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex5 = {worldPos + node->rotationMatrix * QVector3D(   0.0f,    0.0f,  radius), QVector3D(0.0f, 0.0f, 1.0f), QVector2D(0.0f, 0.0f)};
+            VertexData vertex6 = {worldPos + node->rotationMatrix * QVector3D(   0.0f,    0.0f, -radius), QVector3D(0.0f, 0.0f, 1.0f), QVector2D(0.0f, 0.0f)};
+            vertices[indexVertices] = vertex0;
+            vertices[indexVertices + 1] = vertex1;
+            vertices[indexVertices + 2] = vertex2;
+            vertices[indexVertices + 3] = vertex3;
+            vertices[indexVertices + 4] = vertex4;
+            vertices[indexVertices + 5] = vertex5;
+            vertices[indexVertices + 6] = vertex6;
+
+            for (auto child: node->joints) {
+                nodeQueue.push_back(child);
+            }
+        }
+    }
+
+    arrayBuf.bind();
+    arrayBuf.write(0, vertices, nbVertex * sizeof(VertexData));
+}
+
 void GeometryEngine::initCubeGeometry()
 {
     // For cube we would need only 8 vertices but we have to
@@ -239,6 +372,21 @@ int readNode(const std::vector<std::string>& tokens, int i, BVHTree* node) {
     return i + 9 + channelsLen;
 }
 
+int readAnimNode(const std::vector<std::string>& tokens, int i, BVHTree* node, float time) {
+    if (node->channels.empty()) {
+        return i;
+    }
+    int nbChannels = node->channels.size();
+    std::vector<float> keyFrame;
+    keyFrame.push_back(time);
+    for (int j = 0; j < nbChannels; j++) {
+        keyFrame.push_back(std::stof(tokens[i]));
+        i++;
+    }
+    node->channelsValues.push_back(keyFrame);
+    return i;
+}
+
 std::vector<BVHTree*> readBVH(const std::string& file) {
     std::ifstream fch(file);
     if (!fch.is_open()) {
@@ -332,9 +480,47 @@ std::vector<BVHTree*> readBVH(const std::string& file) {
         throw std::invalid_argument("\"MOTION\" token not found");
     }
 
+    if (tokens[i+1] != "Frames:") {
+        throw std::invalid_argument("\"Frames:\" token not found");
+    }
+
+    int nbFrames = std::stoi(tokens[i+2]);
+
+    if (tokens[i+3] != "Frame" && tokens[i+4] != "Time:") {
+        throw std::invalid_argument("\"Frame Time:\" token not found");
+    }
+
+    float frameInterval = std::stof(tokens[i+5]);
+    float time = 0;
+
+    i += 6;
+
+    for (int j = 0; j < nbFrames; j++) {
+        int k = 0;
+        while (k < static_cast<int>(rootList.size())) {
+            BVHTree* root = rootList[k];
+            nodeQueue.push_back(root);
+            while (!nodeQueue.empty()) {
+                BVHTree* node = nodeQueue.back();
+                nodeQueue.pop_back();
+                i = readAnimNode(tokens, i, node, time);
+                for (int childIndex = node->joints.size()-1; childIndex >= 0; childIndex--) {
+                    BVHTree* child = node->joints[childIndex];
+                    nodeQueue.push_back(child);
+                }
+            }
+            k++;
+        }
+        time += frameInterval;
+    }
+    
+    if (i < static_cast<int>(tokens.size())) {
+        throw std::invalid_argument("The file contains more values than expected");
+    }
+
+
     return rootList;
 }
-
 
 void GeometryEngine::printBVHTree(const BVHTree& node, const std::string& dependency, const std::string& first, const std::string& next) {
     std::string out = dependency + first + "Node \"" + node.name + "\", Index " + std::to_string(node.nodeIndex) + "\", NbSubTreeNodes :" + std::to_string(node.nbNode) + ", Offset: (" + std::to_string(node.offset.x()) + ", " + std::to_string(node.offset.y()) + ", " + std::to_string(node.offset.z()) + ")\n";
@@ -349,7 +535,7 @@ void GeometryEngine::printBVHTree(const BVHTree& node, const std::string& depend
 }
 
 void GeometryEngine::initBVHGeometry(std::string filename) {
-    std::vector<BVHTree*> rootList = readBVH(filename);
+    rootList = readBVH(filename);
     printBVHTree(*rootList[0]);
 
     int nbTotNode = 0;
@@ -359,6 +545,7 @@ void GeometryEngine::initBVHGeometry(std::string filename) {
         nbTotLink += root->nbLink;
     }
 
+    nbVertex = nbTotNode * 7;
     nbIndex = nbTotNode * 6 + nbTotLink * 2;
 
     VertexData vertices[nbTotNode * 7];
