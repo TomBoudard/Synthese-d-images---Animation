@@ -10,26 +10,45 @@ struct VertexData
     QVector2D texCoord;
 };
 
+struct VertexSkinData
+{
+    QVector3D position;
+    QVector3D color;
+    float weight0;
+    float weight1;
+    float weight2;
+    float weight3;
+    QVector3D transfo0;
+    QVector3D transfo1;
+    QVector3D transfo2;
+    QVector3D transfo3;
+};
+
 //! [0]
 GeometryEngine::GeometryEngine()
-    : indexBuf(QOpenGLBuffer::IndexBuffer)
+    : indexBufRig(QOpenGLBuffer::IndexBuffer), indexBufSkin(QOpenGLBuffer::IndexBuffer)
 {
     initializeOpenGLFunctions();
 
-    // Generate 2 VBOs
-    arrayBuf.create();
-    indexBuf.create();
+    // Generate 4 VBOs
+    arrayBufRig.create();
+    indexBufRig.create();
+    arrayBufSkin.create();
+    indexBufSkin.create();
 
     // Initializes cube geometry and transfers it to VBOs
     // initCubeGeometry();
     // initRepereGeometry();
-    initBVHGeometry("../models/run1.bvh");
+    initBVHGeometry("../models/walk1.bvh");
+    initMeshGeometry("../models/skin.off", "../models/weights.txt");
 }
 
 GeometryEngine::~GeometryEngine()
 {
-    arrayBuf.destroy();
-    indexBuf.destroy();
+    arrayBufRig.destroy();
+    indexBufRig.destroy();
+    arrayBufSkin.destroy();
+    indexBufSkin.destroy();
 }
 //! [0]
 
@@ -228,12 +247,12 @@ void GeometryEngine::initCubeGeometry()
 
 //! [1]
     // Transfer vertex data to VBO 0
-    arrayBuf.bind();
-    arrayBuf.allocate(vertices, 24 * sizeof(VertexData));
+    arrayBufRig.bind();
+    arrayBufRig.allocate(vertices, 24 * sizeof(VertexData));
 
     // Transfer index data to VBO 1
-    indexBuf.bind();
-    indexBuf.allocate(indices, 34 * sizeof(GLushort));
+    indexBufRig.bind();
+    indexBufRig.allocate(indices, 34 * sizeof(GLushort));
 //! [1]
 }
 
@@ -241,8 +260,8 @@ void GeometryEngine::initCubeGeometry()
 void GeometryEngine::drawCubeGeometry(QOpenGLShaderProgram *program)
 {
     // Tell OpenGL which VBOs to use
-    arrayBuf.bind();
-    indexBuf.bind();
+    arrayBufRig.bind();
+    indexBufRig.bind();
 
     // Offset for position
     quintptr offset = 0;
@@ -288,17 +307,17 @@ void GeometryEngine::initRepereGeometry() {
         0, 3
     };
 
-    arrayBuf.bind();
-    arrayBuf.allocate(vertices, 4 * sizeof(VertexData));
+    arrayBufRig.bind();
+    arrayBufRig.allocate(vertices, 4 * sizeof(VertexData));
 
-    indexBuf.bind();
-    indexBuf.allocate(indices, 6 * sizeof(GLushort));
+    indexBufRig.bind();
+    indexBufRig.allocate(indices, 6 * sizeof(GLushort));
 }
 
 void GeometryEngine::drawRepereGeometry(QOpenGLShaderProgram *program) {
     // Tell OpenGL which VBOs to use
-    arrayBuf.bind();
-    indexBuf.bind();
+    arrayBufRig.bind();
+    indexBufRig.bind();
 
     // Offset for position
     quintptr offset = 0;
@@ -394,8 +413,12 @@ std::vector<BVHTree*> readBVH(const std::string& file) {
     std::vector<BVHTree*> rootList;
     std::vector<BVHTree*> nodeQueue;
 
+    int indexQueue = 0;
+
     while (nextKeyword == "ROOT") {
         BVHTree* root = new BVHTree();
+        root->nodeIndex = indexQueue;
+        indexQueue++;
         i = readNode(tokens, i, root);
         rootList.push_back(root);
         nodeQueue.push_back(root);
@@ -408,6 +431,8 @@ std::vector<BVHTree*> readBVH(const std::string& file) {
                 i = readNode(tokens, i, node);
                 nodeQueue.back()->joints.push_back(node);
                 node->parent = nodeQueue.back();
+                node->nodeIndex = indexQueue;
+                indexQueue++;
                 nodeQueue.push_back(node);
             } else if (t == "End") {
 
@@ -426,6 +451,9 @@ std::vector<BVHTree*> readBVH(const std::string& file) {
                 
                 nodeQueue.back()->joints.push_back(node);
                 node->parent = nodeQueue.back();
+                
+                node->nodeIndex = indexQueue;
+                indexQueue++;
 
                 t = tokens[i + 7];
                 if (t != "}") {
@@ -496,7 +524,7 @@ std::vector<BVHTree*> readBVH(const std::string& file) {
 }
 
 void GeometryEngine::printBVHTree(const BVHTree& node, const std::string& dependency, const std::string& first, const std::string& next) {
-    std::string out = dependency + first + "Node \"" + node.name + "\", NbSubTreeNodes :" + std::to_string(node.nbNode) + ", Offset: (" + std::to_string(node.offset.x()) + ", " + std::to_string(node.offset.y()) + ", " + std::to_string(node.offset.z()) + ")\n";
+    std::string out = dependency + first + "Node \"" + node.name + "\", Index " + std::to_string(node.nodeIndex) + "\", NbSubTreeNodes :" + std::to_string(node.nbNode) + ", Offset: (" + std::to_string(node.offset.x()) + ", " + std::to_string(node.offset.y()) + ", " + std::to_string(node.offset.z()) + ")\n";
     std::cout << out;
 
     for (size_t i = 0; i < node.joints.size(); ++i) {
@@ -524,9 +552,12 @@ void GeometryEngine::initBVHGeometry(std::string filename) {
     VertexData vertices[nbTotNode * 7];
     GLushort indices[nbTotNode * 6 + nbTotLink * 2];
 
+
+
     int indexVertices = 0;
     int indexIndices = 0;
     float radius = 0.05;
+    float scale = 1.0f/100.0f;
 
     std::deque<BVHTree*> nodeQueue;
     for (auto root: rootList) {
@@ -536,10 +567,12 @@ void GeometryEngine::initBVHGeometry(std::string filename) {
             nodeQueue.pop_front();
             node->vertexIndex = indexVertices;
             QVector3D worldPos = node->offset * scale;
+            rigTranfosList[node->nodeIndex] = (worldPos);
             if (node->parent){
                 worldPos += vertices[node->parent->vertexIndex].position;
             } else {
                 worldPos = QVector3D(0.0f, 0.0f, 0.0f);
+                rigTranfosList[node->nodeIndex] = (worldPos);
             }
             VertexData vertex0 = {worldPos + QVector3D(   0.0f,    0.0f,    0.0f), QVector3D(1.0f, 1.0f, 1.0f), QVector2D(0.0f, 0.0f)};
             VertexData vertex1 = {worldPos + QVector3D( radius,    0.0f,    0.0f), QVector3D(1.0f, 0.0f, 0.0f), QVector2D(0.0f, 0.0f)};
@@ -549,6 +582,15 @@ void GeometryEngine::initBVHGeometry(std::string filename) {
             VertexData vertex5 = {worldPos + QVector3D(   0.0f,    0.0f,  radius), QVector3D(0.0f, 0.0f, 1.0f), QVector2D(0.0f, 0.0f)};
             VertexData vertex6 = {worldPos + QVector3D(   0.0f,    0.0f, -radius), QVector3D(0.0f, 0.0f, 1.0f), QVector2D(0.0f, 0.0f)};
             vertices[indexVertices] = vertex0;
+
+            // QMatrix4x4 transfoMatrix;
+            // transfoMatrix.setToIdentity();
+            // transfoMatrix.translate(worldPos);
+            // rigTranfosList.push_back(transfoMatrix);
+
+            // rigTranfosList[node->nodeIndex] = (node->offset * scale);
+            // std::cout << node->nodeIndex << std::endl;
+
             vertices[indexVertices + 1] = vertex1;
             vertices[indexVertices + 2] = vertex2;
             vertices[indexVertices + 3] = vertex3;
@@ -577,17 +619,17 @@ void GeometryEngine::initBVHGeometry(std::string filename) {
         }
     }
 
-    arrayBuf.bind();
-    arrayBuf.allocate(vertices, nbTotNode * 7 * sizeof(VertexData));
+    arrayBufRig.bind();
+    arrayBufRig.allocate(vertices, nbTotNode * 7 * sizeof(VertexData));
 
-    indexBuf.bind();
-    indexBuf.allocate(indices, (nbTotNode * 6 + nbTotLink * 2) * sizeof(GLushort));
+    indexBufRig.bind();
+    indexBufRig.allocate(indices, (nbTotNode * 6 + nbTotLink * 2) * sizeof(GLushort));
 }
 
 void GeometryEngine::drawBVHGeometry(QOpenGLShaderProgram *program) {
     // Tell OpenGL which VBOs to use
-    arrayBuf.bind();
-    indexBuf.bind();
+    arrayBufRig.bind();
+    indexBufRig.bind();
 
     // Offset for position
     quintptr offset = 0;
@@ -607,4 +649,134 @@ void GeometryEngine::drawBVHGeometry(QOpenGLShaderProgram *program) {
 
     // Draw lines geometry using indices from VBO 1
     glDrawElements(GL_LINES, nbIndex, GL_UNSIGNED_SHORT, nullptr);
+}
+
+void GeometryEngine::initMeshGeometry(std::string filenameMesh, std::string filenameWeights){
+
+    mesh myMesh = readMesh(filenameMesh);
+    std::vector<std::vector<weight>> myWeights = readWeights(filenameWeights, myMesh.nbVertices);
+
+    VertexSkinData vertices[myMesh.nbVertices];
+
+    for (int i = 0; i < myMesh.nbVertices; i++){
+        
+        float vertexWeights[4];
+        QVector3D transfos[4];
+
+        int nbVertexWeights = myWeights[i].size();
+
+        for (int j = 0; j < 4; j++){
+            if (j < nbVertexWeights){
+                vertexWeights[j] = myWeights[i][j].w;
+                transfos[j] = rigTranfosList[myWeights[i][j].i];
+            }
+            else{
+                vertexWeights[j] = 0.0;
+                transfos[j] = QVector3D(0.0f, 0.0f, 0.0f);
+            }
+        }
+
+        vertices[i] = {myMesh.vertexList[i],
+                                        QVector3D(0.2f, 0.8f, 1.0f),
+                                        vertexWeights[0],
+                                        vertexWeights[1],
+                                        vertexWeights[2],
+                                        vertexWeights[3],
+                                        transfos[0],
+                                        transfos[1],
+                                        transfos[2],
+                                        transfos[3],
+        };
+        
+    }
+
+    GLushort indices[myMesh.nbFaces*3];
+
+    for (int j = 0; j < myMesh.nbFaces; j++){
+        indices[3*j] = myMesh.indexList[j].i;
+        indices[3*j+1] = myMesh.indexList[j].j;
+        indices[3*j+2] = myMesh.indexList[j].k;
+    }
+
+    arrayBufSkin.bind();
+    arrayBufSkin.allocate(vertices, myMesh.nbVertices * sizeof(VertexSkinData));
+
+    indexBufSkin.bind();
+    indexBufSkin.allocate(indices, myMesh.nbFaces * 3 * sizeof(GLushort));
+    nbIndex = myMesh.nbFaces * 3;
+
+}
+
+void GeometryEngine::drawMeshGeometry(QOpenGLShaderProgram *program){
+    // Tell OpenGL which VBOs to use
+    arrayBufSkin.bind();
+    indexBufSkin.bind();
+
+    // Offset for position
+    quintptr offset = 0;
+
+    // Tell OpenGL programmable pipeline how to locate vertex position data
+    int vertexLocation = program->attributeLocation("a_position");
+    program->enableAttributeArray(vertexLocation);
+    program->setAttributeBuffer(vertexLocation, GL_FLOAT, offset, 3, sizeof(VertexSkinData));
+
+    // Offset for texture coordinate
+    offset += sizeof(QVector3D);
+
+    // Tell OpenGL programmable pipeline how to locate vertex color data
+    int colorLocation = program->attributeLocation("a_color");
+    program->enableAttributeArray(colorLocation);
+    program->setAttributeBuffer(colorLocation, GL_FLOAT, offset, 3, sizeof(VertexSkinData));
+
+    offset += sizeof(QVector3D);
+
+    int weightLocation0 = program->attributeLocation("a_weight0");
+    program->enableAttributeArray(weightLocation0);
+    program->setAttributeBuffer(weightLocation0, GL_FLOAT, offset, 1, sizeof(VertexSkinData));
+
+    offset += sizeof(float);
+
+    int weightLocation1 = program->attributeLocation("a_weight1");
+    program->enableAttributeArray(weightLocation1);
+    program->setAttributeBuffer(weightLocation1, GL_FLOAT, offset, 1, sizeof(VertexSkinData));
+
+    offset += sizeof(float);
+    
+    int weightLocation2 = program->attributeLocation("a_weight2");
+    program->enableAttributeArray(weightLocation2);
+    program->setAttributeBuffer(weightLocation2, GL_FLOAT, offset, 1, sizeof(VertexSkinData));
+
+    offset += sizeof(float);
+
+    int weightLocation3 = program->attributeLocation("a_weight3");
+    program->enableAttributeArray(weightLocation3);
+    program->setAttributeBuffer(weightLocation3, GL_FLOAT, offset, 1, sizeof(VertexSkinData));
+
+    offset += sizeof(float);
+
+    int matLocation0 = program->attributeLocation("a_mat0");
+    program->enableAttributeArray(matLocation0);
+    program->setAttributeBuffer(matLocation0, GL_FLOAT, offset, 3, sizeof(VertexSkinData));
+
+    offset += sizeof(QVector3D);
+
+    int matLocation1 = program->attributeLocation("a_mat1");
+    program->enableAttributeArray(matLocation1);
+    program->setAttributeBuffer(matLocation1, GL_FLOAT, offset, 3, sizeof(VertexSkinData));
+
+    offset += sizeof(QVector3D);
+    
+    int matLocation2 = program->attributeLocation("a_mat2");
+    program->enableAttributeArray(matLocation2);
+    program->setAttributeBuffer(matLocation2, GL_FLOAT, offset, 3, sizeof(VertexSkinData));
+
+    offset += sizeof(QVector3D);
+
+    int matLocation3 = program->attributeLocation("a_mat3");
+    program->enableAttributeArray(matLocation3);
+    program->setAttributeBuffer(matLocation3, GL_FLOAT, offset, 3, sizeof(VertexSkinData));
+
+
+    // Draw lines geometry using indices from VBO 1
+    glDrawElements(GL_TRIANGLES, nbIndex, GL_UNSIGNED_SHORT, nullptr);
 }

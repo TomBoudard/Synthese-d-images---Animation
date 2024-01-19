@@ -173,5 +173,11 @@ void MainWidget::paintGL()
     // Draw cube geometry
     // geometries->drawCubeGeometry(&program);
     // geometries->drawRepereGeometry(&program);
+    program.setUniformValue("isMesh", false);
     geometries->drawBVHGeometry(&program);
+
+    program.setUniformValue("isMesh", true);
+    program.setUniformValue("rigTranfosList", 0);
+    
+    geometries->drawMeshGeometry(&program);
 }
