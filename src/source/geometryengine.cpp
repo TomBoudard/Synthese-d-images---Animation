@@ -42,13 +42,14 @@ std::map<std::string, int> equivalence = {
     {"Zrotation", 5}
 };
 
+float scale = 1.0f/200.0f;
+
+QVector3D globalOffset = QVector3D(-350.0f, 0.0f, 0.0f) * scale;
+
 void GeometryEngine::updateAnimation(float elapseTime) {
     VertexData vertices[nbVertex];
 
     float radius = 0.05;
-    float scale = 1.0f/200.0f;
-
-    QVector3D globalOffset = QVector3D(-350.0f, 0.0f, 0.0f) * scale;
 
     std::deque<BVHTree*> nodeQueue;
     for (auto root: rootList) {
@@ -526,7 +527,7 @@ void GeometryEngine::initBVHGeometry(std::string filename) {
     int indexVertices = 0;
     int indexIndices = 0;
     float radius = 0.05;
-    float scale = 1.0f/100.0f;
+
     std::deque<BVHTree*> nodeQueue;
     for (auto root: rootList) {
         nodeQueue.push_back(root);
